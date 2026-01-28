@@ -3,7 +3,7 @@
 ;; Author: Ad <me@skissue.xyz>
 ;; Maintainer: Ad <me@skissue.xyz>
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "25.1"))
+;; Package-Requires: ((emacs "26.1"))
 ;; Homepage: https://github.com/skissue/gxy
 ;; Keywords: multimedia
 
@@ -31,6 +31,11 @@
 ;;; Code:
 
 (require 'plz)
+
+(defcustom jellyjam-thumbnail-size '(64 . 64)
+  "Thumbnail size (width . height)."
+  :type '(cons integer integer)
+  :group 'jellyjam)
 
 (defconst jellyjam--client-name "jellyjam"
   "Client name sent to Jellyfin server.")
@@ -104,10 +109,50 @@ Save the session in `jellyjam--sessions'."
       :else (lambda (err)
               (message "Authentication failed: %S" err)))))
 
+(defun jellyjam--image-url (id)
+  "Return the image URL for item ID."
+  (format "%s/Items/%s/Images/Primary?maxWidth=%d&maxHeight=%d"
+          (plist-get jellyjam--active-session :server)
+          id
+          (car jellyjam-thumbnail-size) (cdr jellyjam-thumbnail-size)))
+
+(defun jellyjam--retrieve-thumbnail (queue id buffer)
+  "Retrieve thumbnail for item ID and display in BUFFER using QUEUE."
+  (plz-queue queue 'get (jellyjam--image-url id)
+    :as 'binary
+    :then (lambda (data)
+            (when (buffer-live-p buffer)
+              (with-current-buffer buffer
+                (with-silent-modifications
+                  (save-excursion
+                    (goto-char (point-min))
+                    (when (search-forward (format "[[%s]]" id) nil t)
+                      (delete-region (match-beginning 0) (match-end 0))
+                      (insert-image (create-image data nil :data))))))))
+    :else (lambda (err)
+            (message "Error fetching thumbnail for %s: %S" id err))))
+
+(defun jellyjam--format-duration (ticks)
+  "Format TICKS (100-nanosecond units) as human-readable duration."
+  (if (or (null ticks) (zerop ticks))
+      ""
+    (let* ((total-seconds (/ ticks 10000000))
+           (hours (/ total-seconds 3600))
+           (minutes (/ (mod total-seconds 3600) 60))
+           (seconds (mod total-seconds 60)))
+      (if (> hours 0)
+          (format "%d:%02d:%02d" hours minutes seconds)
+        (format "%d:%02d" minutes seconds)))))
+
 (define-derived-mode jellyjam-playlists-mode tabulated-list-mode "Jellyjam Playlists"
   "Major mode for displaying Jellyfin playlists."
-  (setq tabulated-list-format [("Name" 40 t)
-                               ("Items" 8 t)])
+  (setq tabulated-list-format
+        (vector (list " " (ceiling (/ (float (car jellyjam-thumbnail-size))
+                                      (frame-char-width)))
+                      nil)
+                '("Name" 40 t)
+                '("Items" 8 t)
+                '("Duration" 10 t)))
   (setq tabulated-list-padding 2)
   (tabulated-list-init-header))
 
@@ -115,20 +160,28 @@ Save the session in `jellyjam--sessions'."
   "Format PLAYLIST hash-table as a tabulated-list entry."
   (let ((id (gethash "Id" playlist))
         (name (or (gethash "Name" playlist) "Untitled"))
-        (count (or (gethash "ChildCount" playlist) 0)))
-    (list id (vector name (number-to-string count)))))
+        (count (or (gethash "ChildCount" playlist) 0))
+        (ticks (gethash "RunTimeTicks" playlist)))
+    (list id (vector (format "[[%s]]" id)
+                     name
+                     (number-to-string count)
+                     (jellyjam--format-duration ticks)))))
 
 (defun jellyjam-playlists ()
   "List available playlists."
   (interactive)
   (jellyjam--get "/Items?includeItemTypes=Playlist&Recursive=true"
     (let ((items (gethash "Items" response))
-          (buf (get-buffer-create "*Jellyjam Playlists*")))
+          (buf (get-buffer-create "*Jellyjam Playlists*"))
+          (queue (make-plz-queue :limit 4)))
       (with-current-buffer buf
         (jellyjam-playlists-mode)
         (setq tabulated-list-entries
               (mapcar #'jellyjam--format-playlist-entry items))
-        (tabulated-list-print t))
+        (tabulated-list-print t)
+        (plz-run
+         (dolist (entry tabulated-list-entries queue)
+           (jellyjam--retrieve-thumbnail queue (car entry) buf))))
       (switch-to-buffer buf))))
 
 (provide 'jellyjam)
