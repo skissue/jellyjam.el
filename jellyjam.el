@@ -61,6 +61,22 @@ If TOKEN is provided, include it in the header."
           jellyjam--client-version
           (if token (format ", Token=%s" token) "")))
 
+(defmacro jellyjam--get (endpoint &rest then)
+  "Make authenticated GET request to ENDPOINT, evaluating THEN on success.
+ENDPOINT is relative to the server URL. THEN is evaluated with the
+response data bound to `response'."
+  (declare (indent defun))
+  `(progn
+     (unless jellyjam--active-session
+       (error "No active Jellyfin session"))
+     (let ((server (plist-get jellyjam--active-session :server))
+           (token (plist-get jellyjam--active-session :access-token)))
+       (plz 'get (concat server ,endpoint)
+         :headers `(("Authorization" . ,(jellyjam--auth-header token)))
+         :as #'json-parse-buffer
+         :then (lambda (response) ,@then)
+         :else (lambda (err) (message "Request failed: %S" err))))))
+
 (defun jellyjam-authenticate (server user pass)
   "Authenticate with Jellyfin SERVER using USER and PASS.
 Save the session in `jellyjam--sessions'."
@@ -87,6 +103,33 @@ Save the session in `jellyjam--sessions'."
                 (message "Authenticated as %s on %s" user server)))
       :else (lambda (err)
               (message "Authentication failed: %S" err)))))
+
+(define-derived-mode jellyjam-playlists-mode tabulated-list-mode "Jellyjam Playlists"
+  "Major mode for displaying Jellyfin playlists."
+  (setq tabulated-list-format [("Name" 40 t)
+                               ("Items" 8 t)])
+  (setq tabulated-list-padding 2)
+  (tabulated-list-init-header))
+
+(defun jellyjam--format-playlist-entry (playlist)
+  "Format PLAYLIST hash-table as a tabulated-list entry."
+  (let ((id (gethash "Id" playlist))
+        (name (or (gethash "Name" playlist) "Untitled"))
+        (count (or (gethash "ChildCount" playlist) 0)))
+    (list id (vector name (number-to-string count)))))
+
+(defun jellyjam-playlists ()
+  "List available playlists."
+  (interactive)
+  (jellyjam--get "/Items?includeItemTypes=Playlist&Recursive=true"
+    (let ((items (gethash "Items" response))
+          (buf (get-buffer-create "*Jellyjam Playlists*")))
+      (with-current-buffer buf
+        (jellyjam-playlists-mode)
+        (setq tabulated-list-entries
+              (mapcar #'jellyjam--format-playlist-entry items))
+        (tabulated-list-print t))
+      (switch-to-buffer buf))))
 
 (provide 'jellyjam)
 
