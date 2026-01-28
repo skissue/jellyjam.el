@@ -32,10 +32,18 @@
 
 (require 'plz)
 
+(defgroup jellyjam nil
+  "Jellyfin music client and player."
+  :group 'multimedia
+  :prefix "jellyjam-")
+
 (defcustom jellyjam-thumbnail-size '(64 . 64)
   "Thumbnail size (width . height)."
-  :type '(cons integer integer)
-  :group 'jellyjam)
+  :type '(cons integer integer))
+
+(defcustom jellyjam-max-items-per-page 100
+  "Maximum items to list per page."
+  :type 'integer)
 
 (defconst jellyjam--client-name "jellyjam"
   "Client name sent to Jellyfin server.")
@@ -144,6 +152,21 @@ Save the session in `jellyjam--sessions'."
           (format "%d:%02d:%02d" hours minutes seconds)
         (format "%d:%02d" minutes seconds)))))
 
+(defvar-local jellyjam--current-page 1
+  "Current page number in playlist buffer.")
+
+(defun jellyjam-playlists-next-page ()
+  "Go to next page of playlists."
+  (interactive)
+  (jellyjam-playlists (1+ jellyjam--current-page)))
+
+(defun jellyjam-playlists-prev-page ()
+  "Go to previous page of playlists."
+  (interactive)
+  (if (> jellyjam--current-page 1)
+      (jellyjam-playlists (1- jellyjam--current-page))
+    (user-error "No previous page")))
+
 (define-derived-mode jellyjam-playlists-mode tabulated-list-mode "Jellyjam Playlists"
   "Major mode for displaying Jellyfin playlists."
   (setq tabulated-list-format
@@ -154,7 +177,9 @@ Save the session in `jellyjam--sessions'."
                 '("Items" 8 t)
                 '("Duration" 10 t)))
   (setq tabulated-list-padding 2)
-  (tabulated-list-init-header))
+  (tabulated-list-init-header)
+  (local-set-key (kbd "N") #'jellyjam-playlists-next-page)
+  (local-set-key (kbd "P") #'jellyjam-playlists-prev-page))
 
 (defun jellyjam--format-playlist-entry (playlist)
   "Format PLAYLIST hash-table as a tabulated-list entry."
@@ -167,22 +192,27 @@ Save the session in `jellyjam--sessions'."
                      (number-to-string count)
                      (jellyjam--format-duration ticks)))))
 
-(defun jellyjam-playlists ()
-  "List available playlists."
+(defun jellyjam-playlists (&optional page)
+  "List available playlists on PAGE."
   (interactive)
-  (jellyjam--get "/Items?includeItemTypes=Playlist&Recursive=true"
-    (let ((items (gethash "Items" response))
-          (buf (get-buffer-create "*Jellyjam Playlists*"))
-          (queue (make-plz-queue :limit 4)))
-      (with-current-buffer buf
-        (jellyjam-playlists-mode)
-        (setq tabulated-list-entries
-              (mapcar #'jellyjam--format-playlist-entry items))
-        (tabulated-list-print t)
-        (plz-run
-         (dolist (entry tabulated-list-entries queue)
-           (jellyjam--retrieve-thumbnail queue (car entry) buf))))
-      (switch-to-buffer buf))))
+  (let* ((page (or page 1))
+         (start-index (* (1- page) jellyjam-max-items-per-page))
+         (buf (get-buffer-create "*Jellyjam Playlists*")))
+    (jellyjam--get
+      (format "/Items?includeItemTypes=Playlist&Recursive=true&startIndex=%d&limit=%d"
+              start-index jellyjam-max-items-per-page)
+      (let ((items (gethash "Items" response))
+            (queue (make-plz-queue :limit 4)))
+        (with-current-buffer buf
+          (jellyjam-playlists-mode)
+          (setq jellyjam--current-page page)
+          (setq tabulated-list-entries
+                (mapcar #'jellyjam--format-playlist-entry items))
+          (tabulated-list-print t)
+          (plz-run
+           (dolist (entry tabulated-list-entries queue)
+             (jellyjam--retrieve-thumbnail queue (car entry) buf))))
+        (switch-to-buffer buf)))))
 
 (provide 'jellyjam)
 
