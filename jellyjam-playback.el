@@ -8,16 +8,28 @@
 
 (require 'jellyjam-api)
 
-(defcustom jellyjam-volume-step 5
-  "Volume adjustment step for volume up/down commands."
+(defcustom jellyjam-default-volume 100
+  "Default volume passed to mpv (0-100)."
   :type 'integer
   :group 'jellyjam)
+
+(defcustom jellyjam-volume-step 5
+  "Default volume adjustment step for volume up/down commands."
+  :type 'integer
+  :group 'jellyjam)
+
+(defconst jellyjam--mpv-socket "/tmp/jellyjam-mpv.sock"
+  "Path to mpv IPC socket.")
 
 (defvar jellyjam--mpv-process nil
   "Current mpv process for audio playback.")
 
-(defvar jellyjam--mpv-socket "/tmp/jellyjam-mpv.sock"
-  "Path to mpv IPC socket.")
+(defun jellyjam--mpv-command (url)
+  "Format and return command to start mpv with URL."
+  (list "mpv" "--no-video"
+        (format "--input-ipc-server=%s" jellyjam--mpv-socket)
+        (format "--volume=%d" jellyjam-default-volume)
+        url))
 
 (defun jellyjam-play-track (id)
   "Play track ID with mpv."
@@ -34,10 +46,7 @@
     (setq jellyjam--mpv-process
           (make-process :name "jellyjam-mpv"
                         :buffer buf
-                        :command (list "mpv" "--no-video"
-                                       (format "--input-ipc-server=%s"
-                                               jellyjam--mpv-socket)
-                                       url)
+                        :command (jellyjam--mpv-command url)
                         :sentinel (lambda (proc event)
                                     (message "mpv: %s" (string-trim event)))))
     (message "Playing track...")))
