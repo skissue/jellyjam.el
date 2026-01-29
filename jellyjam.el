@@ -165,6 +165,9 @@ Save the session in `jellyjam--sessions'."
 (defvar-local jellyjam--items-command nil
   "Command providing the items for the current buffer.")
 
+(defvar-local jellyjam--open-command nil
+  "Command to open the item at point.")
+
 (defun jellyjam-items-next-page ()
   "Go to next page of items."
   (interactive)
@@ -177,11 +180,19 @@ Save the session in `jellyjam--sessions'."
       (funcall jellyjam--items-command (1- jellyjam--current-page))
     (user-error "No previous page")))
 
+(defun jellyjam-items-open ()
+  "Open the item at point."
+  (interactive)
+  (if jellyjam--open-command
+      (funcall jellyjam--open-command (tabulated-list-get-id))
+    (user-error "No open command for this buffer")))
+
 (define-derived-mode jellyjam-items-mode tabulated-list-mode "Jellyjam"
   "Major mode for displaying Jellyfin item lists."
   (setq tabulated-list-padding 2)
   (local-set-key (kbd "N") #'jellyjam-items-next-page)
-  (local-set-key (kbd "P") #'jellyjam-items-prev-page))
+  (local-set-key (kbd "P") #'jellyjam-items-prev-page)
+  (local-set-key (kbd "RET") #'jellyjam-items-open))
 
 (defun jellyjam--tracks (tracks page pagination-command)
   "List TRACKS for PAGE.
@@ -194,8 +205,9 @@ PAGINATION-COMMAND is used to navigate pages."
       (setq jellyjam--items-command pagination-command
             jellyjam--current-page page
             tabulated-list-format (vector (jellyjam--image-column-spec)
-                                          '("Name" 40 t)
+                                          '("Name" 30 t)
                                           '("Artist" 20 t)
+                                          '("Album" 20 t)
                                           '("Duration" 10 t))
             tabulated-list-entries
             (mapcar #'jellyjam--format-track-entry tracks))
@@ -217,6 +229,18 @@ PAGINATION-COMMAND is used to navigate pages."
                      (number-to-string count)
                      (jellyjam--format-duration ticks)))))
 
+(defun jellyjam-playlist-tracks (playlist-id &optional page)
+  "List tracks in playlist PLAYLIST-ID on PAGE."
+  (let ((page (or page 1))
+        (start-index (* (1- (or page 1)) jellyjam-max-items-per-page)))
+    (jellyjam--get
+      (format "/Playlists/%s/Items?startIndex=%d&limit=%d"
+              playlist-id start-index jellyjam-max-items-per-page)
+      (jellyjam--tracks
+       (gethash "Items" response)
+       page
+       (lambda (p) (jellyjam-playlist-tracks playlist-id p))))))
+
 (defun jellyjam-playlists (&optional page)
   "List available playlists on PAGE."
   (interactive)
@@ -231,6 +255,7 @@ PAGINATION-COMMAND is used to navigate pages."
         (with-current-buffer buf
           (jellyjam-items-mode)
           (setq jellyjam--items-command #'jellyjam-playlists
+                jellyjam--open-command #'jellyjam-playlist-tracks
                 jellyjam--current-page page
                 tabulated-list-format (vector (jellyjam--image-column-spec)
                                               '("Name" 40 t)
@@ -256,6 +281,18 @@ PAGINATION-COMMAND is used to navigate pages."
                      artist
                      (jellyjam--format-duration ticks)))))
 
+(defun jellyjam-album-tracks (album-id &optional page)
+  "List tracks in album ALBUM-ID on PAGE."
+  (let ((page (or page 1))
+        (start-index (* (1- (or page 1)) jellyjam-max-items-per-page)))
+    (jellyjam--get
+      (format "/Items?parentId=%s&includeItemTypes=Audio&startIndex=%d&limit=%d"
+              album-id start-index jellyjam-max-items-per-page)
+      (jellyjam--tracks
+       (gethash "Items" response)
+       page
+       (lambda (p) (jellyjam-album-tracks album-id p))))))
+
 (defun jellyjam-albums (&optional page)
   "List available albums on PAGE."
   (interactive)
@@ -270,6 +307,7 @@ PAGINATION-COMMAND is used to navigate pages."
         (with-current-buffer buf
           (jellyjam-items-mode)
           (setq jellyjam--items-command #'jellyjam-albums
+                jellyjam--open-command #'jellyjam-album-tracks
                 jellyjam--current-page page
                 tabulated-list-format (vector (jellyjam--image-column-spec)
                                               '("Name" 30 t)
