@@ -27,6 +27,7 @@
 (defun jellyjam--mpv-command ()
   "Format and return command to start mpv process."
   (list "mpv" "--no-video" "--idle"
+        "--quiet" "--msg-color=no" "--term-osd=no"
         (format "--input-ipc-server=%s" jellyjam--mpv-socket)
         (format "--volume=%d" jellyjam-default-volume)))
 
