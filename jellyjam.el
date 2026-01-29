@@ -62,6 +62,9 @@ Each session is a plist with :server, :user-id, :access-token,
 (defvar jellyjam--active-session nil
   "Plist containing the currently active session info.")
 
+(defvar jellyjam--mpv-process nil
+  "Current mpv process for audio playback.")
+
 (defun jellyjam--auth-header (&optional token)
   "Generate the X-Emby-Authorization header value.
 If TOKEN is provided, include it in the header."
@@ -116,6 +119,31 @@ Save the session in `jellyjam--sessions'."
                 (message "Authenticated as %s on %s" user server)))
       :else (lambda (err)
               (message "Authentication failed: %S" err)))))
+
+(defun jellyjam--audio-url (id)
+  "Return the audio stream URL for item ID."
+  (format "%s/Audio/%s/universal?ApiKey=%s&Container=opus,webm|opus,ts|mp3,mp3,flac,webma,webm|webma,wav,ogg&TranscodingContainer=ts&TranscodingProtocol=hls&AudioCodec=opus"
+          (plist-get jellyjam--active-session :server)
+          id
+          (plist-get jellyjam--active-session :access-token)))
+
+(defun jellyjam-play-track (id)
+  "Play track ID with mpv."
+  (when (and jellyjam--mpv-process
+             (process-live-p jellyjam--mpv-process))
+    (kill-process jellyjam--mpv-process))
+  (let ((url (jellyjam--audio-url id))
+        (buf (get-buffer-create "*Jellyjam mpv*")))
+    (with-current-buffer buf
+      (erase-buffer)
+      (insert (format "Playing: %s\nURL: %s\n\n" id url)))
+    (setq jellyjam--mpv-process
+          (make-process :name "jellyjam-mpv"
+                        :buffer buf
+                        :command (list "mpv" "--no-video" url)
+                        :sentinel (lambda (proc event)
+                                    (message "mpv: %s" (string-trim event)))))
+    (message "Playing track...")))
 
 (defun jellyjam--image-column-spec ()
   "Specification for the image column for `tabulated-list-format'."
@@ -203,6 +231,7 @@ PAGINATION-COMMAND is used to navigate pages."
     (with-current-buffer buf
       (jellyjam-items-mode)
       (setq jellyjam--items-command pagination-command
+            jellyjam--open-command #'jellyjam-play-track
             jellyjam--current-page page
             tabulated-list-format (vector (jellyjam--image-column-spec)
                                           '("Name" 30 t)
