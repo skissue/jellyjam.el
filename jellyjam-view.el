@@ -7,6 +7,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'map)
 (require 'plz)
 (require 'jellyjam-api)
 
@@ -145,6 +146,54 @@ PAGINATION-CMD navigates pages, OPEN-CMD opens items."
        (dolist (entry tabulated-list-entries queue)
          (jellyjam--retrieve-thumbnail queue (car entry) buf))))
     (switch-to-buffer buf)))
+
+(defmacro jellyjam-define-view (name docstring &rest args)
+  "Define a paginated view command NAME with DOCSTRING.
+ARGS is a plist with:
+  :params       - plist of extra query params (evaluated)
+  :buffer-name  - buffer name string
+  :fields       - list of field symbols
+  :open-cmd     - command to open items"
+  (declare (indent 2))
+  (map-let (:params :buffer-name :fields :open-cmd) args
+    `(defun ,name (&optional page parent-id)
+       ,docstring
+       (interactive)
+       (let* ((page (or page 1))
+              (start-index (* (1- page) jellyjam-max-items-per-page))
+              (params (append ,params
+                              (when parent-id `(:parentId ,parent-id))
+                              `(:startIndex ,start-index
+                                :limit ,jellyjam-max-items-per-page))))
+         (jellyjam--get "/Items" params
+           (jellyjam--display-items
+            :items (gethash "Items" response)
+            :buffer-name ,buffer-name
+            :fields ',fields
+            :page page
+            :pagination-cmd (lambda (p) (,name p parent-id))
+            :open-cmd ,open-cmd))))))
+
+(jellyjam-define-view jellyjam-playlists
+  "List available playlists."
+  :params '(:includeItemTypes "Playlist" :Recursive t)
+  :buffer-name "*Jellyjam Playlists*"
+  :fields (name count duration)
+  :open-cmd (lambda (id) (jellyjam-tracks nil id)))
+
+(jellyjam-define-view jellyjam-albums
+  "List available albums."
+  :params '(:includeItemTypes "MusicAlbum" :Recursive t)
+  :buffer-name "*Jellyjam Albums*"
+  :fields (name artist duration)
+  :open-cmd (lambda (id) (jellyjam-tracks nil id)))
+
+(jellyjam-define-view jellyjam-tracks
+  "List tracks, optionally filtered by PARENT-ID."
+  :params '(:includeItemTypes "Audio" :Recursive t)
+  :buffer-name "*Jellyjam Tracks*"
+  :fields (name artists album duration)
+  :open-cmd #'jellyjam-play-track)
 
 (provide 'jellyjam-view)
 
