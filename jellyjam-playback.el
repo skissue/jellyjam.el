@@ -24,37 +24,42 @@
 (defvar jellyjam--mpv-process nil
   "Current mpv process for audio playback.")
 
-(defun jellyjam--mpv-command (url)
-  "Format and return command to start mpv with URL."
-  (list "mpv" "--no-video"
+(defun jellyjam--mpv-command ()
+  "Format and return command to start mpv process."
+  (list "mpv" "--no-video" "--idle"
         (format "--input-ipc-server=%s" jellyjam--mpv-socket)
-        (format "--volume=%d" jellyjam-default-volume)
-        url))
+        (format "--volume=%d" jellyjam-default-volume)))
+
+(defun jellyjam--ensure-mpv ()
+  "Ensure mpv is running.
+Return non-nil if there was an error."
+  (unless (and jellyjam--mpv-process
+               (process-live-p jellyjam--mpv-process))
+    (when (file-exists-p jellyjam--mpv-socket)
+      (delete-file jellyjam--mpv-socket))
+    (setq jellyjam--mpv-process
+          (make-process :name "jellyjam-mpv"
+                        :buffer (get-buffer-create "*Jellyjam mpv*")
+                        :command (jellyjam--mpv-command)
+                        :sentinel (lambda (_proc event)
+                                    (message "mpv: %s" (string-trim event)))))
+    (let ((tries 50))
+      (while (and (> tries 0)
+                  (not (file-exists-p jellyjam--mpv-socket)))
+        (sleep-for 0.05)
+        (cl-decf tries))
+      (unless (file-exists-p jellyjam--mpv-socket)
+        (error "Failed to start mpv")))))
 
 (defun jellyjam-play-track (id)
   "Play track ID with mpv."
-  (when (and jellyjam--mpv-process
-             (process-live-p jellyjam--mpv-process))
-    (kill-process jellyjam--mpv-process))
-  (when (file-exists-p jellyjam--mpv-socket)
-    (delete-file jellyjam--mpv-socket))
-  (let ((url (jellyjam--audio-url id))
-        (buf (get-buffer-create "*Jellyjam mpv*")))
-    (with-current-buffer buf
-      (erase-buffer)
-      (insert (format "Playing: %s\nURL: %s\n\n" id url)))
-    (setq jellyjam--mpv-process
-          (make-process :name "jellyjam-mpv"
-                        :buffer buf
-                        :command (jellyjam--mpv-command url)
-                        :sentinel (lambda (proc event)
-                                    (message "mpv: %s" (string-trim event)))))
+  (let ((url (jellyjam--audio-url id)))
+    (jellyjam--mpv-send `["loadfile" ,url "replace"])
     (message "Playing track...")))
 
 (defun jellyjam--mpv-send (command)
   "Send COMMAND list to mpv via IPC socket."
-  (unless (file-exists-p jellyjam--mpv-socket)
-    (user-error "mpv is not running"))
+  (jellyjam--ensure-mpv)
   (let ((json (concat (json-serialize `(:command ,command)) "\n")))
     (with-temp-buffer
       (let ((proc (make-network-process
