@@ -180,7 +180,6 @@ Save the session in `jellyjam--sessions'."
 (define-derived-mode jellyjam-items-mode tabulated-list-mode "Jellyjam"
   "Major mode for displaying Jellyfin item lists."
   (setq tabulated-list-padding 2)
-  (tabulated-list-init-header)
   (local-set-key (kbd "N") #'jellyjam-items-next-page)
   (local-set-key (kbd "P") #'jellyjam-items-prev-page))
 
@@ -207,6 +206,7 @@ Save the session in `jellyjam--sessions'."
       (let ((items (gethash "Items" response))
             (queue (make-plz-queue :limit 4)))
         (with-current-buffer buf
+          (jellyjam-items-mode)
           (setq jellyjam--items-command #'jellyjam-playlists
                 jellyjam--current-page page
                 tabulated-list-format (vector (jellyjam--image-column-spec)
@@ -215,7 +215,7 @@ Save the session in `jellyjam--sessions'."
                                               '("Duration" 10 t))
                 tabulated-list-entries
                 (mapcar #'jellyjam--format-playlist-entry items))
-          (jellyjam-items-mode)
+          (tabulated-list-init-header)
           (tabulated-list-print t)
           (plz-run
            (dolist (entry tabulated-list-entries queue)
@@ -245,15 +245,59 @@ Save the session in `jellyjam--sessions'."
       (let ((items (gethash "Items" response))
             (queue (make-plz-queue :limit 4)))
         (with-current-buffer buf
+          (jellyjam-items-mode)
           (setq jellyjam--items-command #'jellyjam-albums
                 jellyjam--current-page page
                 tabulated-list-format (vector (jellyjam--image-column-spec)
-                                              '("Name" 40 t)
+                                              '("Name" 30 t)
                                               '("Artist" 20 t)
                                               '("Duration" 10 t))
                 tabulated-list-entries
                 (mapcar #'jellyjam--format-album-entry items))
+          (tabulated-list-init-header)
+          (tabulated-list-print t)
+          (plz-run
+           (dolist (entry tabulated-list-entries queue)
+             (jellyjam--retrieve-thumbnail queue (car entry) buf))))
+        (switch-to-buffer buf)))))
+
+(defun jellyjam--format-track-entry (track)
+  "Format TRACK hash-table as a tabulated-list entry."
+  (let ((id (gethash "Id" track))
+        (name (or (gethash "Name" track) "Untitled"))
+        ;; ???
+        (artist (or (gethash "Artists" track) ["Unknown"]))
+        (album (or (gethash "Album" track) "Unknown"))
+        (ticks (gethash "RunTimeTicks" track)))
+    (list id (vector (format "[[%s]]" id)
+                     name
+                     (aref artist 0)
+                     album
+                     (jellyjam--format-duration ticks)))))
+
+(defun jellyjam-tracks (&optional page)
+  "List available tracks on PAGE."
+  (interactive)
+  (let* ((page (or page 1))
+         (start-index (* (1- page) jellyjam-max-items-per-page))
+         (buf (get-buffer-create "*Jellyjam Tracks*")))
+    (jellyjam--get
+      (format "/Items?includeItemTypes=Audio&Recursive=true&startIndex=%d&limit=%d"
+              start-index jellyjam-max-items-per-page)
+      (let ((items (gethash "Items" response))
+            (queue (make-plz-queue :limit 4)))
+        (with-current-buffer buf
           (jellyjam-items-mode)
+          (setq jellyjam--items-command #'jellyjam-tracks
+                jellyjam--current-page page
+                tabulated-list-format (vector (jellyjam--image-column-spec)
+                                              '("Title" 30 t)
+                                              '("Artist" 20 t)
+                                              '("Album" 20 t)
+                                              '("Duration" 10 t))
+                tabulated-list-entries
+                (mapcar #'jellyjam--format-track-entry items))
+          (tabulated-list-init-header)
           (tabulated-list-print t)
           (plz-run
            (dolist (entry tabulated-list-entries queue)
