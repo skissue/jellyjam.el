@@ -46,40 +46,29 @@
     (jellyjam--get
       (format "/Playlists/%s/Items?startIndex=%d&limit=%d"
               playlist-id start-index jellyjam-max-items-per-page)
-      (jellyjam--tracks
-       (gethash "Items" response)
-       page
-       (lambda (p) (jellyjam-playlist-tracks playlist-id p))
-       #'jellyjam-play-track))))
+      (jellyjam--display-items
+       :items (gethash "Items" response)
+       :buffer-name "*Jellyjam Tracks*"
+       :fields '(name artists album duration)
+       :page page
+       :pagination-cmd (lambda (p) (jellyjam-playlist-tracks playlist-id p))
+       :open-cmd #'jellyjam-play-track))))
 
 (defun jellyjam-playlists (&optional page)
   "List available playlists on PAGE."
   (interactive)
   (let* ((page (or page 1))
-         (start-index (* (1- page) jellyjam-max-items-per-page))
-         (buf (get-buffer-create "*Jellyjam Playlists*")))
+         (start-index (* (1- page) jellyjam-max-items-per-page)))
     (jellyjam--get
       (format "/Items?includeItemTypes=Playlist&Recursive=true&startIndex=%d&limit=%d"
               start-index jellyjam-max-items-per-page)
-      (let ((items (gethash "Items" response))
-            (queue (make-plz-queue :limit 4)))
-        (with-current-buffer buf
-          (jellyjam-items-mode)
-          (setq jellyjam--items-command #'jellyjam-playlists
-                jellyjam--open-command #'jellyjam-playlist-tracks
-                jellyjam--current-page page
-                tabulated-list-format (vector (jellyjam--image-column-spec)
-                                              '("Name" 40 t)
-                                              '("Items" 8 t)
-                                              '("Duration" 10 t))
-                tabulated-list-entries
-                (mapcar #'jellyjam--format-playlist-entry items))
-          (tabulated-list-init-header)
-          (tabulated-list-print t)
-          (plz-run
-           (dolist (entry tabulated-list-entries queue)
-             (jellyjam--retrieve-thumbnail queue (car entry) buf))))
-        (switch-to-buffer buf)))))
+      (jellyjam--display-items
+       :items (gethash "Items" response)
+       :buffer-name "*Jellyjam Playlists*"
+       :fields '(name count duration)
+       :page page
+       :pagination-cmd #'jellyjam-playlists
+       :open-cmd #'jellyjam-playlist-tracks))))
 
 (defun jellyjam-album-tracks (album-id &optional page)
   "List tracks in album ALBUM-ID on PAGE."
@@ -88,40 +77,29 @@
     (jellyjam--get
       (format "/Items?parentId=%s&includeItemTypes=Audio&startIndex=%d&limit=%d"
               album-id start-index jellyjam-max-items-per-page)
-      (jellyjam--tracks
-       (gethash "Items" response)
-       page
-       (lambda (p) (jellyjam-album-tracks album-id p))
-       #'jellyjam-play-track))))
+      (jellyjam--display-items
+       :items (gethash "Items" response)
+       :buffer-name "*Jellyjam Tracks*"
+       :fields '(name artists album duration)
+       :page page
+       :pagination-cmd (lambda (p) (jellyjam-album-tracks album-id p))
+       :open-cmd #'jellyjam-play-track))))
 
 (defun jellyjam-albums (&optional page)
   "List available albums on PAGE."
   (interactive)
   (let* ((page (or page 1))
-         (start-index (* (1- page) jellyjam-max-items-per-page))
-         (buf (get-buffer-create "*Jellyjam Albums*")))
+         (start-index (* (1- page) jellyjam-max-items-per-page)))
     (jellyjam--get
       (format "/Items?includeItemTypes=MusicAlbum&Recursive=true&startIndex=%d&limit=%d"
               start-index jellyjam-max-items-per-page)
-      (let ((items (gethash "Items" response))
-            (queue (make-plz-queue :limit 4)))
-        (with-current-buffer buf
-          (jellyjam-items-mode)
-          (setq jellyjam--items-command #'jellyjam-albums
-                jellyjam--open-command #'jellyjam-album-tracks
-                jellyjam--current-page page
-                tabulated-list-format (vector (jellyjam--image-column-spec)
-                                              '("Name" 30 t)
-                                              '("Artist" 20 t)
-                                              '("Duration" 10 t))
-                tabulated-list-entries
-                (mapcar #'jellyjam--format-album-entry items))
-          (tabulated-list-init-header)
-          (tabulated-list-print t)
-          (plz-run
-           (dolist (entry tabulated-list-entries queue)
-             (jellyjam--retrieve-thumbnail queue (car entry) buf))))
-        (switch-to-buffer buf)))))
+      (jellyjam--display-items
+       :items (gethash "Items" response)
+       :buffer-name "*Jellyjam Albums*"
+       :fields '(name artist duration)
+       :page page
+       :pagination-cmd #'jellyjam-albums
+       :open-cmd #'jellyjam-album-tracks))))
 
 (defun jellyjam-tracks (&optional page)
   "List available tracks on PAGE."
@@ -131,8 +109,13 @@
     (jellyjam--get
       (format "/Items?includeItemTypes=Audio&Recursive=true&startIndex=%d&limit=%d"
               start-index jellyjam-max-items-per-page)
-      (jellyjam--tracks (gethash "Items" response) page #'jellyjam-tracks
-                        #'jellyjam-play-track))))
+      (jellyjam--display-items
+       :items (gethash "Items" response)
+       :buffer-name "*Jellyjam Tracks*"
+       :fields '(name artists album duration)
+       :page page
+       :pagination-cmd #'jellyjam-tracks
+       :open-cmd #'jellyjam-play-track))))
 
 (provide 'jellyjam)
 
