@@ -153,22 +153,26 @@ Save the session in `jellyjam--sessions'."
         (format "%d:%02d" minutes seconds)))))
 
 (defvar-local jellyjam--current-page 1
-  "Current page number in playlist buffer.")
+  "Current page number in collection buffer.")
 
-(defun jellyjam-playlists-next-page ()
-  "Go to next page of playlists."
+(defvar-local jellyjam--collection-command nil
+  "Command providing the collections for the current buffer.")
+
+(defun jellyjam-collections-next-page ()
+  "Go to next page of collections."
   (interactive)
-  (jellyjam-playlists (1+ jellyjam--current-page)))
+  (funcall jellyjam--collection-command (1+ jellyjam--current-page)))
 
-(defun jellyjam-playlists-prev-page ()
-  "Go to previous page of playlists."
+(defun jellyjam-collections-prev-page ()
+  "Go to previous page of collections."
   (interactive)
   (if (> jellyjam--current-page 1)
-      (jellyjam-playlists (1- jellyjam--current-page))
+      (funcall jellyjam--collection-command (1- jellyjam--current-page))
     (user-error "No previous page")))
 
-(define-derived-mode jellyjam-playlists-mode tabulated-list-mode "Jellyjam Playlists"
-  "Major mode for displaying Jellyfin playlists."
+(define-derived-mode jellyjam-collections-mode tabulated-list-mode "Jellyjam Playlists"
+  "Major mode for displaying Jellyfin collections.
+Used for albums and playlists."
   (setq tabulated-list-format
         (vector (list " " (ceiling (/ (float (car jellyjam-thumbnail-size))
                                       (frame-char-width)))
@@ -178,8 +182,8 @@ Save the session in `jellyjam--sessions'."
                 '("Duration" 10 t)))
   (setq tabulated-list-padding 2)
   (tabulated-list-init-header)
-  (local-set-key (kbd "N") #'jellyjam-playlists-next-page)
-  (local-set-key (kbd "P") #'jellyjam-playlists-prev-page))
+  (local-set-key (kbd "N") #'jellyjam-collections-next-page)
+  (local-set-key (kbd "P") #'jellyjam-collections-prev-page))
 
 (defun jellyjam--format-playlist-entry (playlist)
   "Format PLAYLIST hash-table as a tabulated-list entry."
@@ -204,9 +208,10 @@ Save the session in `jellyjam--sessions'."
       (let ((items (gethash "Items" response))
             (queue (make-plz-queue :limit 4)))
         (with-current-buffer buf
-          (jellyjam-playlists-mode)
-          (setq jellyjam--current-page page)
-          (setq tabulated-list-entries
+          (jellyjam-collections-mode)
+          (setq jellyjam--collection-command #'jellyjam-playlists
+                jellyjam--current-page page
+                tabulated-list-entries
                 (mapcar #'jellyjam--format-playlist-entry items))
           (tabulated-list-print t)
           (plz-run
