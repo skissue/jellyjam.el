@@ -8,7 +8,6 @@
 
 (require 'cl-lib)
 (require 'map)
-(require 'plz)
 (require 'jellyjam-api)
 
 (defcustom jellyjam-thumbnail-size '(64 . 64)
@@ -37,24 +36,16 @@
                     (frame-char-width)))
         nil))
 
-(defun jellyjam--retrieve-thumbnail (queue id buffer)
-  "Retrieve thumbnail for item ID and display in BUFFER using QUEUE."
-  (plz-queue queue 'get (jellyjam--image-url
-                         id
-                         (car jellyjam-thumbnail-size)
-                         (cdr jellyjam-thumbnail-size))
-    :as 'binary
-    :then (lambda (data)
-            (when (buffer-live-p buffer)
-              (with-current-buffer buffer
-                (with-silent-modifications
-                  (save-excursion
-                    (goto-char (point-min))
-                    (when (search-forward (format "[[%s]]" id) nil t)
-                      (delete-region (match-beginning 0) (match-end 0))
-                      (insert-image (create-image data nil :data))))))))
-    :else (lambda (err)
-            (message "Error fetching thumbnail for %s: %S" id err))))
+(defun jellyjam--insert-thumbnail (buffer id data)
+  "Insert thumbnail DATA for ID into BUFFER at placeholder."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (with-silent-modifications
+        (save-excursion
+          (goto-char (point-min))
+          (when (search-forward (format "[[%s]]" id) nil t)
+            (delete-region (match-beginning 0) (match-end 0))
+            (insert-image (create-image data nil :data))))))))
 
 (defun jellyjam--format-duration (ticks)
   "Format TICKS (100-nanosecond units) as human-readable duration."
@@ -131,8 +122,7 @@ PAGINATION-CMD navigates pages, OPEN-CMD opens items."
               (list id (vconcat (list (format "[[%s]]" id))
                                 (mapcar (lambda (fn) (funcall fn item))
                                         extractors))))))
-         (buf (get-buffer-create buffer-name))
-         (queue (make-plz-queue :limit 4)))
+         (buf (get-buffer-create buffer-name)))
     (with-current-buffer buf
       (jellyjam-items-mode)
       (setq jellyjam--items-command pagination-cmd
@@ -142,9 +132,12 @@ PAGINATION-CMD navigates pages, OPEN-CMD opens items."
             tabulated-list-entries (mapcar format-entry items))
       (tabulated-list-init-header)
       (tabulated-list-print t)
-      (plz-run
-       (dolist (entry tabulated-list-entries queue)
-         (jellyjam--retrieve-thumbnail queue (car entry) buf))))
+      (jellyjam--fetch-thumbnails
+       (mapcar #'car tabulated-list-entries)
+       (car jellyjam-thumbnail-size)
+       (cdr jellyjam-thumbnail-size)
+       (lambda (id data) (jellyjam--insert-thumbnail buf id data))
+       (lambda (id err) (message "Error fetching thumbnail for %s: %S" id err))))
     (switch-to-buffer buf)))
 
 (defmacro jellyjam-define-view (name docstring &rest args)

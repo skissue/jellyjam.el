@@ -114,6 +114,18 @@ Save the session in `jellyjam--sessions'."
           id
           width height))
 
+(defun jellyjam--fetch-thumbnails (ids width height on-success on-error)
+  "Fetch thumbnails for IDS with dimensions WIDTH x HEIGHT.
+ON-SUCCESS is called with (id data) for each successful fetch.
+ON-ERROR is called with (id err) for each failure."
+  (let ((queue (make-plz-queue :limit 4)))
+    (plz-run
+     (dolist (id ids queue)
+       (plz-queue queue 'get (jellyjam--image-url id width height)
+         :as 'binary
+         :then (lambda (data) (funcall on-success id data))
+         :else (lambda (err) (funcall on-error id err)))))))
+
 (provide 'jellyjam-api)
 
 ;;; jellyjam-api.el ends here
