@@ -44,8 +44,8 @@
   (let ((page (or page 1))
         (start-index (* (1- (or page 1)) jellyjam-max-items-per-page)))
     (jellyjam--get
-      (format "/Playlists/%s/Items?startIndex=%d&limit=%d"
-              playlist-id start-index jellyjam-max-items-per-page)
+        (format "/Playlists/%s/Items" playlist-id)
+        `(:startIndex ,start-index :limit ,jellyjam-max-items-per-page)
       (jellyjam--display-items
        :items (gethash "Items" response)
        :buffer-name "*Jellyjam Tracks*"
@@ -60,8 +60,9 @@
   (let* ((page (or page 1))
          (start-index (* (1- page) jellyjam-max-items-per-page)))
     (jellyjam--get
-      (format "/Items?includeItemTypes=Playlist&Recursive=true&startIndex=%d&limit=%d"
-              start-index jellyjam-max-items-per-page)
+        "/Items"
+        `(:includeItemTypes "Playlist" :Recursive t
+                            :startIndex ,start-index :limit ,jellyjam-max-items-per-page)
       (jellyjam--display-items
        :items (gethash "Items" response)
        :buffer-name "*Jellyjam Playlists*"
@@ -75,8 +76,9 @@
   (let ((page (or page 1))
         (start-index (* (1- (or page 1)) jellyjam-max-items-per-page)))
     (jellyjam--get
-      (format "/Items?parentId=%s&includeItemTypes=Audio&startIndex=%d&limit=%d"
-              album-id start-index jellyjam-max-items-per-page)
+        "/Items"
+        `(:parentId ,album-id :includeItemTypes "Audio"
+                    :startIndex ,start-index :limit ,jellyjam-max-items-per-page)
       (jellyjam--display-items
        :items (gethash "Items" response)
        :buffer-name "*Jellyjam Tracks*"
@@ -91,8 +93,9 @@
   (let* ((page (or page 1))
          (start-index (* (1- page) jellyjam-max-items-per-page)))
     (jellyjam--get
-      (format "/Items?includeItemTypes=MusicAlbum&Recursive=true&startIndex=%d&limit=%d"
-              start-index jellyjam-max-items-per-page)
+        "/Items"
+        `(:includeItemTypes "MusicAlbum" :Recursive t
+                            :startIndex ,start-index :limit ,jellyjam-max-items-per-page)
       (jellyjam--display-items
        :items (gethash "Items" response)
        :buffer-name "*Jellyjam Albums*"
@@ -107,8 +110,9 @@
   (let* ((page (or page 1))
          (start-index (* (1- page) jellyjam-max-items-per-page)))
     (jellyjam--get
-      (format "/Items?includeItemTypes=Audio&Recursive=true&startIndex=%d&limit=%d"
-              start-index jellyjam-max-items-per-page)
+        "/Items"
+        `(:includeItemTypes "Audio" :Recursive t
+                            :startIndex ,start-index :limit ,jellyjam-max-items-per-page)
       (jellyjam--display-items
        :items (gethash "Items" response)
        :buffer-name "*Jellyjam Tracks*"

@@ -37,17 +37,37 @@ If TOKEN is provided, include it in the header."
           jellyjam--client-version
           (if token (format ", Token=%s" token) "")))
 
-(defmacro jellyjam--get (endpoint &rest then)
+(defun jellyjam--plist-to-query-string (plist)
+  "Convert PLIST to a URL query string."
+  (let (pairs)
+    (map-do
+     (lambda (key value)
+       (push (format "%s=%s"
+                     (url-hexify-string (substring (symbol-name key) 1))
+                     (url-hexify-string
+                      (pcase value
+                        ('nil "false")
+                        ('t "true")
+                        (_ (format "%s" value)))))
+             pairs))
+     plist)
+    (when pairs
+      (concat "?" (string-join pairs "&")))))
+
+(defmacro jellyjam--get (endpoint params &rest then)
   "Make authenticated GET request to ENDPOINT, evaluating THEN on success.
-ENDPOINT is relative to the server URL. THEN is evaluated with the
+ENDPOINT is relative to the server URL. PARAMS is a plist of query
+parameters. Pass nil for no parameters. THEN is evaluated with the
 response data bound to `response'."
-  (declare (indent defun))
+  (declare (indent 2))
   `(progn
      (unless jellyjam--active-session
        (error "No active Jellyfin session"))
-     (let ((server (plist-get jellyjam--active-session :server))
-           (token (plist-get jellyjam--active-session :access-token)))
-       (plz 'get (concat server ,endpoint)
+     (let* ((server (plist-get jellyjam--active-session :server))
+            (token (plist-get jellyjam--active-session :access-token))
+            (query-string (jellyjam--plist-to-query-string ,params))
+            (url (concat server ,endpoint query-string)))
+       (plz 'get url
          :headers `(("Authorization" . ,(jellyjam--auth-header token)))
          :as #'json-parse-buffer
          :then (lambda (response) ,@then)
