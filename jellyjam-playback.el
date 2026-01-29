@@ -73,6 +73,16 @@ Return non-nil if there was an error."
         (goto-char (point-min))
         (ignore-errors (json-parse-buffer))))))
 
+(defun jellyjam-stop ()
+  "Stop mpv playback."
+  (interactive)
+  (jellyjam--mpv-send '["stop"]))
+
+(defun jellyjam-pause ()
+  "Toggle mpv pause state."
+  (interactive)
+  (jellyjam--mpv-send '["cycle" "pause"]))
+
 (defun jellyjam-volume-set (volume)
   "Set mpv volume to VOLUME (0-100)."
   (interactive "nVolume: ")
