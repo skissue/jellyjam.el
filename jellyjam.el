@@ -183,6 +183,29 @@ Save the session in `jellyjam--sessions'."
   (local-set-key (kbd "N") #'jellyjam-items-next-page)
   (local-set-key (kbd "P") #'jellyjam-items-prev-page))
 
+(defun jellyjam--tracks (tracks page pagination-command)
+  "List TRACKS for PAGE.
+PAGINATION-COMMAND is used to navigate pages."
+  (interactive)
+  (let* ((buf (get-buffer-create "*Jellyjam Tracks*"))
+         (queue (make-plz-queue :limit 4)))
+    (with-current-buffer buf
+      (jellyjam-items-mode)
+      (setq jellyjam--items-command pagination-command
+            jellyjam--current-page page
+            tabulated-list-format (vector (jellyjam--image-column-spec)
+                                          '("Name" 40 t)
+                                          '("Artist" 20 t)
+                                          '("Duration" 10 t))
+            tabulated-list-entries
+            (mapcar #'jellyjam--format-track-entry tracks))
+      (tabulated-list-init-header)
+      (tabulated-list-print t)
+      (plz-run
+       (dolist (entry tabulated-list-entries queue)
+         (jellyjam--retrieve-thumbnail queue (car entry) buf))))
+    (switch-to-buffer buf)))
+
 (defun jellyjam--format-playlist-entry (playlist)
   "Format PLAYLIST hash-table as a tabulated-list entry."
   (let ((id (gethash "Id" playlist))
@@ -284,25 +307,7 @@ Save the session in `jellyjam--sessions'."
     (jellyjam--get
       (format "/Items?includeItemTypes=Audio&Recursive=true&startIndex=%d&limit=%d"
               start-index jellyjam-max-items-per-page)
-      (let ((items (gethash "Items" response))
-            (queue (make-plz-queue :limit 4)))
-        (with-current-buffer buf
-          (jellyjam-items-mode)
-          (setq jellyjam--items-command #'jellyjam-tracks
-                jellyjam--current-page page
-                tabulated-list-format (vector (jellyjam--image-column-spec)
-                                              '("Title" 30 t)
-                                              '("Artist" 20 t)
-                                              '("Album" 20 t)
-                                              '("Duration" 10 t))
-                tabulated-list-entries
-                (mapcar #'jellyjam--format-track-entry items))
-          (tabulated-list-init-header)
-          (tabulated-list-print t)
-          (plz-run
-           (dolist (entry tabulated-list-entries queue)
-             (jellyjam--retrieve-thumbnail queue (car entry) buf))))
-        (switch-to-buffer buf)))))
+      (jellyjam--tracks (gethash "Items" response) page #'jellyjam-tracks))))
 
 (provide 'jellyjam)
 
