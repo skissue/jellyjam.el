@@ -52,11 +52,41 @@ Return non-nil if there was an error."
       (unless (file-exists-p jellyjam--mpv-socket)
         (error "Failed to start mpv")))))
 
-(defun jellyjam-play-track (id)
-  "Play track ID with mpv."
-  (let ((url (jellyjam--audio-url id)))
-    (jellyjam--mpv-send "loadfile" url "replace")
-    (message "Playing track...")))
+(defun jellyjam-play-track (id &optional silent)
+  "Play track ID with mpv.
+Show a message notifying the user unless SILENT is non-nil."
+  (jellyjam--mpv-send "loadfile" (jellyjam--audio-url id) "replace")
+  (unless silent
+    (message "Playing track")))
+
+(defun jellyjam-queue-track (id &optional silent)
+  "Add track ID to mpv playlist.
+Show a message notifying the user unless SILENT is non-nil."
+  (jellyjam--mpv-send "loadfile" (jellyjam--audio-url id) "append")
+  (unless silent
+    (message "Queued track")))
+
+(defun jellyjam-queue-tracks (ids &optional silent)
+  "Queue multiple track IDS.
+First track replaces current, rest append. Show a message notifying the
+user unless SILENT is non-nil."
+  (jellyjam-play-track (car ids) :silent)
+  (dolist (id (cdr ids))
+    (jellyjam-queue-track id :silent))
+  (unless silent
+    (message "Queued %d tracks" (length ids))))
+
+(defun jellyjam-play-collection (parent-id)
+  "Fetch and queue all tracks under PARENT-ID."
+  (jellyjam--get "/Items" `(:parentId ,parent-id
+                                      :includeItemTypes "Audio"
+                                      :Recursive t
+                                      :limit 1000)
+    (let ((ids (seq-map (lambda (item) (gethash "Id" item))
+                        (gethash "Items" response))))
+      (if (null ids)
+          (message "No tracks found")
+        (jellyjam-queue-tracks ids)))))
 
 (defun jellyjam--mpv-send (&rest args)
   "Send ARGS to mpv via IPC socket."
