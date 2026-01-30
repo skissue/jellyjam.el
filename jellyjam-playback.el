@@ -7,6 +7,7 @@
 ;;; Code:
 
 (require 'jellyjam-api)
+(require 'jellyjam-mpv)
 
 (defcustom jellyjam-default-volume 100
   "Default volume passed to mpv (0-100)."
@@ -17,40 +18,6 @@
   "Default volume adjustment step for volume up/down commands."
   :type 'integer
   :group 'jellyjam)
-
-(defconst jellyjam--mpv-socket "/tmp/jellyjam-mpv.sock"
-  "Path to mpv IPC socket.")
-
-(defvar jellyjam--mpv-process nil
-  "Current mpv process for audio playback.")
-
-(defun jellyjam--mpv-command ()
-  "Format and return command to start mpv process."
-  (list "mpv" "--no-video" "--idle"
-        "--quiet" "--msg-color=no" "--term-osd=no"
-        (format "--input-ipc-server=%s" jellyjam--mpv-socket)
-        (format "--volume=%d" jellyjam-default-volume)))
-
-(defun jellyjam--ensure-mpv ()
-  "Ensure mpv is running.
-Return non-nil if there was an error."
-  (unless (and jellyjam--mpv-process
-               (process-live-p jellyjam--mpv-process))
-    (when (file-exists-p jellyjam--mpv-socket)
-      (delete-file jellyjam--mpv-socket))
-    (setq jellyjam--mpv-process
-          (make-process :name "jellyjam-mpv"
-                        :buffer (get-buffer-create "*Jellyjam mpv*")
-                        :command (jellyjam--mpv-command)
-                        :sentinel (lambda (_proc event)
-                                    (message "mpv: %s" (string-trim event)))))
-    (let ((tries 50))
-      (while (and (> tries 0)
-                  (not (file-exists-p jellyjam--mpv-socket)))
-        (sleep-for 0.05)
-        (cl-decf tries))
-      (unless (file-exists-p jellyjam--mpv-socket)
-        (error "Failed to start mpv")))))
 
 (defun jellyjam-play-track (id &optional silent)
   "Play track ID with mpv.
@@ -98,22 +65,6 @@ Show a message notifying the user unless SILENT is non-nil."
   (jellyjam--get-child-items parent-id
       (jellyjam-queue-tracks ids)))
 
-(defun jellyjam--mpv-send (&rest args)
-  "Send ARGS to mpv via IPC socket."
-  (jellyjam--ensure-mpv)
-  (let ((json (concat (json-serialize `(:command ,(apply #'vector args))) "\n")))
-    (with-temp-buffer
-      (let ((proc (make-network-process
-                   :name "jellyjam-mpv-ipc"
-                   :buffer (current-buffer)
-                   :family 'local
-                   :service jellyjam--mpv-socket)))
-        (process-send-string proc json)
-        (accept-process-output proc 0.1)
-        (delete-process proc)
-        (goto-char (point-min))
-        (ignore-errors (json-parse-buffer))))))
-
 (defun jellyjam-stop ()
   "Stop Jellyjam playback."
   (interactive)
@@ -145,17 +96,6 @@ Show a message notifying the user unless SILENT is non-nil."
          (current (gethash "data" response)))
     (when current
       (jellyjam-volume-set (max 0 (- current jellyjam-volume-step))))))
-
-(defun jellyjam-kill ()
-  "Kill the mpv process."
-  (interactive)
-  (when (and jellyjam--mpv-process
-             (process-live-p jellyjam--mpv-process))
-    (delete-process jellyjam--mpv-process)
-    (setq jellyjam--mpv-process nil)
-    (when (file-exists-p jellyjam--mpv-socket)
-      (delete-file jellyjam--mpv-socket))
-    (message "Killed mpv process")))
 
 (provide 'jellyjam-playback)
 
