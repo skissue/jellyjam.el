@@ -136,6 +136,17 @@ user unless SILENT is non-nil."
     (when current
       (jellyjam-volume-set (max 0 (- current jellyjam-volume-step))))))
 
+(defun jellyjam-kill ()
+  "Kill the mpv process."
+  (interactive)
+  (when (and jellyjam--mpv-process
+             (process-live-p jellyjam--mpv-process))
+    (delete-process jellyjam--mpv-process)
+    (setq jellyjam--mpv-process nil)
+    (when (file-exists-p jellyjam--mpv-socket)
+      (delete-file jellyjam--mpv-socket))
+    (message "Killed mpv process")))
+
 (provide 'jellyjam-playback)
 
 ;;; jellyjam-playback.el ends here
