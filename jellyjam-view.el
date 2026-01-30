@@ -33,6 +33,9 @@
 (defvar-local jellyjam--queue-function nil
   "Function to queue the item at point.")
 
+(defvar-local jellyjam--play-function nil
+  "Function to play the item at point, overriding the current queue.")
+
 (defun jellyjam--image-column-spec ()
   "Specification for the image column for `tabulated-list-format'."
   (list " "
@@ -89,13 +92,21 @@
       (funcall jellyjam--queue-function (tabulated-list-get-id))
     (user-error "No queue function for this buffer")))
 
+(defun jellyjam-items-play ()
+  "Play the item at point, overriding the current queue."
+  (interactive)
+  (if jellyjam--play-function
+      (funcall jellyjam--play-function (tabulated-list-get-id))
+    (user-error "No play function for this buffer")))
+
 (define-derived-mode jellyjam-items-mode tabulated-list-mode "Jellyjam"
   "Major mode for displaying Jellyfin item lists."
   (setq tabulated-list-padding 2)
   (local-set-key (kbd "N") #'jellyjam-items-next-page)
   (local-set-key (kbd "P") #'jellyjam-items-prev-page)
   (local-set-key (kbd "RET") #'jellyjam-items-open)
-  (local-set-key (kbd "a") #'jellyjam-items-queue))
+  (local-set-key (kbd "a") #'jellyjam-items-queue)
+  (local-set-key (kbd "C-<return>") #'jellyjam-items-play))
 
 (defun jellyjam--field-spec (field)
   "Return (COLUMN-SPEC . EXTRACTOR) for FIELD symbol."
@@ -121,7 +132,7 @@
     (_ (error "Unknown field: %s" field))))
 
 (cl-defun jellyjam--display-items (&key items buffer-name fields page
-                                        pagination-cmd open-cmd queue-cmd)
+                                        pagination-cmd open-cmd queue-cmd play-cmd)
   "Display ITEMS in BUFFER-NAME with FIELDS on PAGE.
 PAGINATION-CMD navigates pages, OPEN-CMD opens items, QUEUE-CMD queues items."
   (let* ((field-specs (mapcar #'jellyjam--field-spec fields))
@@ -140,6 +151,7 @@ PAGINATION-CMD navigates pages, OPEN-CMD opens items, QUEUE-CMD queues items."
       (setq jellyjam--items-command pagination-cmd
             jellyjam--open-function open-cmd
             jellyjam--queue-function queue-cmd
+            jellyjam--play-function play-cmd
             jellyjam--current-page page
             tabulated-list-format columns
             tabulated-list-entries (mapcar format-entry items))
@@ -160,9 +172,10 @@ ARGS is a plist with:
   :buffer-name  - buffer name string
   :fields       - list of field symbols
   :open-cmd     - command to open items
-  :queue-cmd    - command to queue items"
+  :queue-cmd    - command to queue items
+  :play-cmd     - command to play items (clears queue first)"
   (declare (indent 2))
-  (map-let (:params :buffer-name :fields :open-cmd :queue-cmd) args
+  (map-let (:params :buffer-name :fields :open-cmd :queue-cmd :play-cmd) args
     `(defun ,name (&optional page parent-id)
        ,docstring
        (interactive)
@@ -180,7 +193,8 @@ ARGS is a plist with:
             :page page
             :pagination-cmd (lambda (p) (,name p parent-id))
             :open-cmd ,open-cmd
-            :queue-cmd ,queue-cmd))))))
+            :queue-cmd ,queue-cmd
+            :play-cmd ,play-cmd))))))
 
 (jellyjam-define-view jellyjam-playlists
     "List available playlists."
@@ -188,7 +202,8 @@ ARGS is a plist with:
   :buffer-name "*Jellyjam Playlists*"
   :fields (name count duration)
   :open-cmd (lambda (id) (jellyjam-tracks nil id))
-  :queue-cmd #'jellyjam-play-collection)
+  :queue-cmd #'jellyjam-queue-collection
+  :play-cmd #'jellyjam-play-collection)
 
 (jellyjam-define-view jellyjam-albums
     "List available albums."
@@ -196,7 +211,8 @@ ARGS is a plist with:
   :buffer-name "*Jellyjam Albums*"
   :fields (name artist duration)
   :open-cmd (lambda (id) (jellyjam-tracks nil id))
-  :queue-cmd #'jellyjam-play-collection)
+  :queue-cmd #'jellyjam-queue-collection
+  :play-cmd #'jellyjam-play-collection)
 
 (jellyjam-define-view jellyjam-tracks
     "List tracks, optionally filtered by PARENT-ID."
@@ -204,7 +220,8 @@ ARGS is a plist with:
   :buffer-name "*Jellyjam Tracks*"
   :fields (name artists album duration)
   :open-cmd #'jellyjam-play-track
-  :queue-cmd #'jellyjam-queue-track)
+  :queue-cmd #'jellyjam-queue-track
+  :play-cmd #'jellyjam-play-track)
 
 (provide 'jellyjam-view)
 

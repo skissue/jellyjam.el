@@ -69,25 +69,34 @@ Show a message notifying the user unless SILENT is non-nil."
 
 (defun jellyjam-queue-tracks (ids &optional silent)
   "Queue multiple track IDS.
-First track replaces current, rest append. Show a message notifying the
-user unless SILENT is non-nil."
-  (jellyjam-play-track (car ids) :silent)
-  (dolist (id (cdr ids))
+Show a message notifying the user unless SILENT is non-nil."
+  (dolist (id ids)
     (jellyjam-queue-track id :silent))
   (unless silent
     (message "Queued %d tracks" (length ids))))
 
+(defun jellyjam-clear-queue (&optional silent)
+  "Clear the Jellyjam playback queue.
+Show a message notifying the user unless SILENT is non-nil."
+  (interactive)
+  (jellyjam--mpv-send "playlist-clear")
+  ;; `playlist-clear' does not remove the current file.
+  (jellyjam--mpv-send "playlist-remove" "current")
+  (unless silent
+    (message "Cleared queue")))
+
 (defun jellyjam-play-collection (parent-id)
-  "Fetch and queue all tracks under PARENT-ID."
-  (jellyjam--get "/Items" `(:parentId ,parent-id
-                                      :includeItemTypes "Audio"
-                                      :Recursive t
-                                      :limit 1000)
-    (let ((ids (seq-map (lambda (item) (gethash "Id" item))
-                        (gethash "Items" response))))
-      (if (null ids)
-          (message "No tracks found")
-        (jellyjam-queue-tracks ids)))))
+  "Clear queue and play all tracks under PARENT-ID."
+  (jellyjam--get-child-items parent-id
+      (jellyjam-clear-queue :silent)
+    (jellyjam-play-track (car ids) :silent)
+    (jellyjam-queue-tracks (cdr ids) :silent)
+    (message "Playing %d tracks" (length ids))))
+
+(defun jellyjam-queue-collection (parent-id)
+  "Add all tracks under PARENT-ID to the queue."
+  (jellyjam--get-child-items parent-id
+      (jellyjam-queue-tracks ids)))
 
 (defun jellyjam--mpv-send (&rest args)
   "Send ARGS to mpv via IPC socket."

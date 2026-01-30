@@ -126,6 +126,20 @@ ON-ERROR is called with (id err) for each failure."
          :then (lambda (data) (funcall on-success id data))
          :else (lambda (err) (funcall on-error id err)))))))
 
+(defmacro jellyjam--get-child-items (parent-id &rest body)
+  "Fetch child item IDs under PARENT-ID and evaluate BODY.
+BODY is evaluated with `ids' bound to the list of item IDs.
+Shows a message if no items are found."
+  (declare (indent 2))
+  `(jellyjam--get "/Items" `(:parentId ,,parent-id
+                                       :includeItemTypes "Audio"
+                                       :Recursive t)
+     (let ((ids (seq-map (lambda (item) (gethash "Id" item))
+                         (gethash "Items" response))))
+       (if (null ids)
+           (message "No items found")
+         ,@body))))
+
 (provide 'jellyjam-api)
 
 ;;; jellyjam-api.el ends here
