@@ -56,6 +56,7 @@ Return non-nil if there was an error."
   "Play track ID with mpv.
 Show a message notifying the user unless SILENT is non-nil."
   (jellyjam--mpv-send "loadfile" (jellyjam--audio-url id) "replace")
+  (jellyjam--mpv-send "set_property" "pause" :false)
   (unless silent
     (message "Playing track")))
 
