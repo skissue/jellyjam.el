@@ -27,11 +27,11 @@
 (defvar-local jellyjam--items-command nil
   "Command providing the items for the current buffer.")
 
-(defvar-local jellyjam--open-command nil
-  "Command to open the item at point.")
+(defvar-local jellyjam--open-function nil
+  "Function to open the item at point.")
 
-(defvar-local jellyjam--queue-command nil
-  "Command to queue the item at point.")
+(defvar-local jellyjam--queue-function nil
+  "Function to queue the item at point.")
 
 (defun jellyjam--image-column-spec ()
   "Specification for the image column for `tabulated-list-format'."
@@ -78,16 +78,16 @@
 (defun jellyjam-items-open ()
   "Open the item at point."
   (interactive)
-  (if jellyjam--open-command
-      (funcall jellyjam--open-command (tabulated-list-get-id))
-    (user-error "No open command for this buffer")))
+  (if jellyjam--open-function
+      (funcall jellyjam--open-function (tabulated-list-get-id))
+    (user-error "No open function for this buffer")))
 
 (defun jellyjam-items-queue ()
   "Queue the item at point."
   (interactive)
-  (if jellyjam--queue-command
-      (funcall jellyjam--queue-command (tabulated-list-get-id))
-    (user-error "No queue command for this buffer")))
+  (if jellyjam--queue-function
+      (funcall jellyjam--queue-function (tabulated-list-get-id))
+    (user-error "No queue function for this buffer")))
 
 (define-derived-mode jellyjam-items-mode tabulated-list-mode "Jellyjam"
   "Major mode for displaying Jellyfin item lists."
@@ -138,8 +138,8 @@ PAGINATION-CMD navigates pages, OPEN-CMD opens items, QUEUE-CMD queues items."
     (with-current-buffer buf
       (jellyjam-items-mode)
       (setq jellyjam--items-command pagination-cmd
-            jellyjam--open-command open-cmd
-            jellyjam--queue-command queue-cmd
+            jellyjam--open-function open-cmd
+            jellyjam--queue-function queue-cmd
             jellyjam--current-page page
             tabulated-list-format columns
             tabulated-list-entries (mapcar format-entry items))
