@@ -91,20 +91,17 @@ Return non-nil if there was an error."
         (error "Failed to start mpv")))))
 
 (defun jellyjam--mpv-send (&rest args)
-  "Send ARGS to mpv via IPC socket."
-  (jellyjam--ensure-mpv)
+  "Send ARGS to mpv via persistent IPC connection.
+Returns the parsed JSON response synchronously."
+  (jellyjam--ensure-ipc)
+  (setq jellyjam--pending-response nil)
   (let ((json (concat (json-serialize `(:command ,(apply #'vector args))) "\n")))
-    (with-temp-buffer
-      (let ((proc (make-network-process
-                   :name "jellyjam-mpv-ipc"
-                   :buffer (current-buffer)
-                   :family 'local
-                   :service jellyjam--mpv-socket)))
-        (process-send-string proc json)
-        (accept-process-output proc 0.1)
-        (delete-process proc)
-        (goto-char (point-min))
-        (ignore-errors (json-parse-buffer))))))
+    (process-send-string jellyjam--ipc-process json)
+    (let ((tries 100))
+      (while (and (> tries 0) (null jellyjam--pending-response))
+        (accept-process-output jellyjam--ipc-process 0.01)
+        (cl-decf tries)))
+    jellyjam--pending-response))
 
 (defun jellyjam--ensure-ipc ()
   "Ensure persistent IPC connection to mpv exists."
