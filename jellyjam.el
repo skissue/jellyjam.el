@@ -32,6 +32,7 @@
 
 (require 'jellyjam-api)
 (require 'jellyjam-view)
+(require 'jellyjam-mpv)
 (require 'jellyjam-playback)
 
 (defgroup jellyjam nil
